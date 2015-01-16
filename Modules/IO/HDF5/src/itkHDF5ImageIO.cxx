@@ -27,7 +27,8 @@ namespace itk
 
 HDF5ImageIO::HDF5ImageIO() : m_H5File(ITK_NULLPTR),
                              m_VoxelDataSet(ITK_NULLPTR),
-                             m_ImageInformationWritten(false)
+                             m_ImageInformationWritten(false),
+                             m_H5FileFlags(H5F_ACC_TRUNC)
 {
 }
 
@@ -52,6 +53,7 @@ HDF5ImageIO
   Superclass::PrintSelf(os, indent);
   // just prints out the pointer value.
   os << indent << "H5File: " << this->m_H5File << std::endl;
+  os << indent << "H5FileFlags: " << this->m_H5FileFlags << std::endl;
 }
 
 //
@@ -696,8 +698,10 @@ HDF5ImageIO
 {
   try
     {
-    this->m_H5File = new H5::H5File(this->GetFileName(),
-                                    H5F_ACC_RDONLY);
+    if (m_H5File==ITK_NULLPTR)
+      {
+      this->m_H5File = new H5::H5File(this->GetFileName(), H5F_ACC_RDONLY);
+      }
 
     // not sure what to do with this initially
     //eventually it will be needed if the file versions change
@@ -1045,8 +1049,10 @@ HDF5ImageIO
 
   try
     {
-    this->m_H5File = new H5::H5File(this->GetFileName(),
-                                    H5F_ACC_TRUNC);
+    if (m_H5File==ITK_NULLPTR)
+      {
+      this->m_H5File = new H5::H5File(this->GetFileName(), m_H5FileFlags);
+      }
     this->WriteString(ItkVersion,
                       Version::GetITKVersion());
 
@@ -1245,7 +1251,10 @@ void
 HDF5ImageIO
 ::Write(const void *buffer)
 {
-  this->WriteImageInformation();
+  if (m_H5FileFlags == H5F_ACC_TRUNC)
+    {
+    this->WriteImageInformation();
+    }
   try
     {
     int numComponents = this->GetNumberOfComponents();
@@ -1282,9 +1291,20 @@ HDF5ImageIO
     if(this->m_VoxelDataSet == ITK_NULLPTR)
       {
       this->m_VoxelDataSet = new H5::DataSet();
-      *(this->m_VoxelDataSet) = this->m_H5File->createDataSet(VoxelDataName,
-                                                              dataType,
-                                                              imageSpace,plist);
+      if (m_H5FileFlags == H5F_ACC_TRUNC)
+        {
+        *(this->m_VoxelDataSet) = this->m_H5File->createDataSet(VoxelDataName,
+                                                                dataType,
+                                                                imageSpace,plist);
+        }
+      else if (m_H5FileFlags ==  H5F_ACC_RDWR)
+        {
+        *(this->m_VoxelDataSet) = this->m_H5File->openDataSet(VoxelDataName);
+        }
+      else
+        {
+        itkExceptionMacro(<< "HDF5 open flags unexpected value.");
+        }
       }
     H5::DataSpace dspace;
     this->SetupStreaming(&imageSpace,&dspace);
@@ -1311,6 +1331,55 @@ HDF5ImageIO
     {
     itkExceptionMacro(<< error.getCDetailMsg());
     }
+}
+
+unsigned int
+HDF5ImageIO
+::GetActualNumberOfSplitsForWriting(unsigned int numberOfRequestedSplits,
+                                  const ImageIORegion & pasteRegion,
+                                  const ImageIORegion & largestPossibleRegion)
+{
+  const unsigned int numberOfSplits =
+    StreamingImageIOBase::GetActualNumberOfSplitsForWriting(numberOfRequestedSplits,
+                                                            pasteRegion,
+                                                            largestPossibleRegion);
+
+  const bool pasting = (pasteRegion != largestPossibleRegion);
+
+  // When pasting, the HDF5 file open flags must be H5F_ACC_RDWR
+  if (pasting && m_H5FileFlags != H5F_ACC_RDWR)
+    {
+      if(this->m_VoxelDataSet != ITK_NULLPTR)
+        {
+        m_VoxelDataSet->close();
+        delete m_VoxelDataSet;
+        }
+      if(this->m_H5File != ITK_NULLPTR)
+        {
+        this->m_H5File->close();
+        delete this->m_H5File;
+        }
+      m_H5FileFlags = H5F_ACC_RDWR;
+      this->m_H5File = new H5::H5File(this->GetFileName(), m_H5FileFlags);
+    }
+
+  // When not pasting, the HDF5 file open flags must be H5F_ACC_TRUNC
+  if (! pasting && m_H5FileFlags != H5F_ACC_TRUNC)
+    {
+      if(this->m_VoxelDataSet != ITK_NULLPTR)
+        {
+        m_VoxelDataSet->close();
+        delete m_VoxelDataSet;
+        }
+      if(this->m_H5File != ITK_NULLPTR)
+      {
+        this->m_H5File->close();
+        delete this->m_H5File;
+      }
+      m_H5FileFlags = H5F_ACC_TRUNC;
+      this->m_H5File = new H5::H5File(this->GetFileName(), m_H5FileFlags);
+    }
+  return numberOfSplits;
 }
 
 //

@@ -130,6 +130,14 @@ public:
    * that the IORegions has been set properly. */
   virtual void Write(const void *buffer) ITK_OVERRIDE;
 
+  // see super class for documentation
+  //
+  // Verifies the set file name meets the pasting requirements, then calls
+  // GetActualNumberOfSplitsForWritingCanStreamWrite
+  virtual unsigned int GetActualNumberOfSplitsForWriting(unsigned int numberOfRequestedSplits,
+                                                         const ImageIORegion & pasteRegion,
+                                                         const ImageIORegion & largestPossibleRegion) ITK_OVERRIDE;
+
 protected:
   HDF5ImageIO();
   ~HDF5ImageIO();
@@ -190,6 +198,7 @@ private:
   H5::H5File  *m_H5File;
   H5::DataSet *m_VoxelDataSet;
   bool         m_ImageInformationWritten;
+  unsigned int m_H5FileFlags;
 };
 } // end namespace itk
 
