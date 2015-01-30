@@ -28,7 +28,8 @@ namespace itk
 HDF5ImageIO::HDF5ImageIO() : m_H5File(ITK_NULLPTR),
                              m_VoxelDataSet(ITK_NULLPTR),
                              m_ImageInformationWritten(false),
-                             m_H5FileFlags(H5F_ACC_TRUNC)
+                             m_H5FileFlags(H5F_ACC_TRUNC),
+                             m_H5FileSet(false)
 {
 }
 
@@ -1346,6 +1347,14 @@ HDF5ImageIO
 
   const bool pasting = (pasteRegion != largestPossibleRegion);
 
+  //bool H5FileFlagsIsLT = ( m_H5FileFlags == H5LT_FILE_IMAGE_OPEN_RW ||
+                           //m_H5FileFlags == H5LT_FILE_IMAGE_DONT_COPY ||
+                           //m_H5FileFlags == H5LT_FILE_IMAGE_DONT_RELEASE ||
+                           //m_H5FileFlags == H5LT_FILE_IMAGE_ALL )
+
+  if (m_H5FileSet && pasting)
+    itkExceptionMacro(<< "Using HDF5ImageIO::SetH5File and pasting are incompatible.");
+
   // When pasting, the HDF5 file open flags must be H5F_ACC_RDWR
   if (pasting && m_H5FileFlags != H5F_ACC_RDWR)
     {
@@ -1380,6 +1389,16 @@ HDF5ImageIO
       this->m_H5File = new H5::H5File(this->GetFileName(), m_H5FileFlags);
     }
   return numberOfSplits;
+}
+
+void
+HDF5ImageIO
+::SetH5File(H5::H5File *h5file)
+{
+  if (m_H5File != ITK_NULLPTR)
+    itkExceptionMacro(<< "HDF5 file is already open.");
+  m_H5File = h5file;
+  m_H5FileSet = true;
 }
 
 //

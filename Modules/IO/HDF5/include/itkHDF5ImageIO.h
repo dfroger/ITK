@@ -138,6 +138,8 @@ public:
                                                          const ImageIORegion & pasteRegion,
                                                          const ImageIORegion & largestPossibleRegion) ITK_OVERRIDE;
 
+  void SetH5File(H5::H5File *h5file);
+
 protected:
   HDF5ImageIO();
   ~HDF5ImageIO();
@@ -199,6 +201,7 @@ private:
   H5::DataSet *m_VoxelDataSet;
   bool         m_ImageInformationWritten;
   unsigned int m_H5FileFlags;
+  bool         m_H5FileSet;
 };
 } // end namespace itk
 
