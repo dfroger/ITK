@@ -29,7 +29,8 @@ HDF5ImageIO::HDF5ImageIO() : m_H5File(ITK_NULLPTR),
                              m_VoxelDataSet(ITK_NULLPTR),
                              m_ImageInformationWritten(false),
                              m_H5FileFlags(H5F_ACC_TRUNC),
-                             m_H5FileSet(false)
+                             m_H5FileSet(false),
+                             m_PastingToExistingFile(false)
 {
 }
 
@@ -1345,18 +1346,65 @@ HDF5ImageIO
                                                             pasteRegion,
                                                             largestPossibleRegion);
 
-  const bool pasting = (pasteRegion != largestPossibleRegion);
+  const bool writtingSubregion = (pasteRegion != largestPossibleRegion);
 
   //bool H5FileFlagsIsLT = ( m_H5FileFlags == H5LT_FILE_IMAGE_OPEN_RW ||
                            //m_H5FileFlags == H5LT_FILE_IMAGE_DONT_COPY ||
                            //m_H5FileFlags == H5LT_FILE_IMAGE_DONT_RELEASE ||
                            //m_H5FileFlags == H5LT_FILE_IMAGE_ALL )
 
-  if (m_H5FileSet && pasting)
-    itkExceptionMacro(<< "Using HDF5ImageIO::SetH5File and pasting are incompatible.");
+  if (m_H5FileSet && writtingSubregion)
+    itkExceptionMacro(<< "Using HDF5ImageIO::SetH5File and writtingSubregion are incompatible.");
 
-  // When pasting, the HDF5 file open flags must be H5F_ACC_RDWR
-  if (pasting && m_H5FileFlags != H5F_ACC_RDWR)
+  /* There are 3 cases to consider:
+
+                      +------------------------+------------------------+
+                      | pastingToExistingFile  | pastingToExistingFile  |
+                      |         false          |         true           |
+  +-------------------+------------------------+------------------------+
+  | writtingSubregion |        Standard        |                        |
+  |       false       |      H5F_ACC_TRUNC     |        Pasting         |
+  +-------------------+------------------------+      H5F_ACC_RDWR      |
+  | writtingSubregion |        Streaming       |                        |
+  |       true        |      H5F_ACC_TRUNC     |                        |
+  +-------------------+------------------------+------------------------+
+
+  Standard:
+
+     The most simple case, the image is written to a new file in a uniq
+     operation.  If the file exist, it is overwritten. Otherwise, it is
+     created.
+
+     HDF5 file must be opened with H5F_ACC_TRUNC mode.
+
+  Streaming:
+
+     Image is written to a new file it multiple operations, iterating on
+     subregions.  If the file exist, it is overwritten. Otherwise, it is
+     created.
+
+     HDF5 file must be opened with H5F_ACC_TRUNC mode.
+
+  Pasting:
+
+     The file already exists, and a subregion is pasted in it to override
+     existing value.  Image dimensions in the file does not change. Values
+     outside of the subregion does not change, metadata does not change.
+
+     If the file does not exists, this is an error.
+
+     If writtingSubregion==false, the subregion is the whole image, but there
+     is nothing special with this.
+
+     HDF5 file must be opened with H5F_ACC_RDWR mode.
+
+   Note that we don't detect Streaming/Pasting on the file existance creteria,
+   because if the file exists, we may want to override it by streaming, not
+   necessarly paste in it. That's why the PastingToExistingFile() method is
+   added.
+   */
+
+  if (this->m_PastingToExistingFile && m_H5FileFlags != H5F_ACC_RDWR)
     {
       if(this->m_VoxelDataSet != ITK_NULLPTR)
         {
@@ -1372,8 +1420,7 @@ HDF5ImageIO
       this->m_H5File = new H5::H5File(this->GetFileName(), m_H5FileFlags);
     }
 
-  // When not pasting, the HDF5 file open flags must be H5F_ACC_TRUNC
-  if (! pasting && m_H5FileFlags != H5F_ACC_TRUNC)
+  if ( (! this->m_PastingToExistingFile)  && m_H5FileFlags != H5F_ACC_TRUNC)
     {
       if(this->m_VoxelDataSet != ITK_NULLPTR)
         {
@@ -1399,6 +1446,13 @@ HDF5ImageIO
     itkExceptionMacro(<< "HDF5 file is already open.");
   m_H5File = h5file;
   m_H5FileSet = true;
+}
+
+void
+HDF5ImageIO
+::PastingToExistingFile()
+{
+    m_PastingToExistingFile = true;
 }
 
 //
