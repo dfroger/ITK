@@ -15,175 +15,116 @@
  *  limitations under the License.
  *
  *=========================================================================*/
-/*=========================================================================
- *
- *  Portions of this file are subject to the VTK Toolkit Version 3 copyright.
- *
- *  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
- *
- *  For complete copyright, license and disclaimer of warranty information
- *  please refer to the NOTICE file at the top of the ITK source tree.
- *
- *=========================================================================*/
-#ifndef __itkChangeRegionImageFilter_hxx
-#define __itkChangeRegionImageFilter_hxx
+
+#ifndef itkChangeRegionImageFilter_hxx
+#define itkChangeRegionImageFilter_hxx
 
 #include "itkChangeRegionImageFilter.h"
-#include "itkImageRegionIteratorWithIndex.h"
+#include "itkImageRegionIterator.h"
 #include "itkContinuousIndex.h"
 #include "itkObjectFactory.h"
-#include "itkProgressReporter.h"
 
 namespace itk
 {
-template< class ImageType >
+
+template< typename ImageType >
 ChangeRegionImageFilter< ImageType >
 ::ChangeRegionImageFilter()
 {
-  for ( unsigned int j = 0; j < ImageDimension; j++ )
-    {
-    m_ChangeRegionFactors[j] = 1;
-    }
+    m_ChangeOrigin = false;
+    m_ChangeBufferedRegion = false;
+    m_ChangeLargestPossibleRegion = false;
 }
 
-template< class ImageType >
+template<typename ImageType >
+void
+ChangeRegionImageFilter< ImageType >
+::SetOrigin(typename ImageType::PointType origin)
+{
+    m_Origin = origin;
+    m_ChangeOrigin = true;
+}
+
+template<typename ImageType >
+void
+ChangeRegionImageFilter< ImageType >
+::SetBufferedRegion(typename ImageType::RegionType region)
+{
+    m_BufferedRegion = region;
+    m_ChangeBufferedRegion = true;
+}
+
+template<typename ImageType >
+void
+ChangeRegionImageFilter< ImageType >
+::SetLargestPossibleRegion(typename ImageType::RegionType region)
+{
+    m_LargestPossibleRegion = region;
+    m_ChangeLargestPossibleRegion = true;
+}
+
+template< typename ImageType >
+void
+ChangeRegionImageFilter< ImageType >
+::GenerateOutputInformation()
+{
+  Superclass::GenerateOutputInformation();
+
+  // Get pointers to the input and output
+  typename Superclass::OutputImagePointer output = this->GetOutput();
+  typename Superclass::InputImagePointer input = const_cast< ImageType * >( this->GetInput() );
+
+  // Default is to copy input's information
+  output->CopyInformation(input);
+
+  if (m_ChangeOrigin)
+      output->SetOrigin(m_Origin);
+
+  if (m_ChangeBufferedRegion) {
+      output->SetBufferedRegion(m_BufferedRegion);
+      output->SetRequestedRegion(m_BufferedRegion);
+  }
+
+  if (m_ChangeLargestPossibleRegion)
+      output->SetLargestPossibleRegion(m_LargestPossibleRegion);
+}
+
+template< typename ImageType >
+void
+ChangeRegionImageFilter< ImageType >
+::GenerateInputRequestedRegion()
+{
+  Superclass::GenerateInputRequestedRegion();
+
+  ImageType* input = const_cast< ImageType * >( this->GetInput() );
+
+  input->SetRequestedRegion(input->GetBufferedRegion());
+}
+
+template< typename ImageType >
+void
+ChangeRegionImageFilter< ImageType >
+::GenerateData()
+{
+  ImageType* input = const_cast< ImageType * >( this->GetInput() );
+  ImageType* output = this->GetOutput();
+
+  // No need to copy the bulk data
+  output->SetPixelContainer( input->GetPixelContainer() );
+}
+
+template< typename ImageType >
 void
 ChangeRegionImageFilter< ImageType >
 ::PrintSelf(std::ostream & os, Indent indent) const
 {
   Superclass::PrintSelf(os, indent);
 
-  os << indent << "ChangeRegion Factor: ";
-  for ( unsigned int j = 0; j < ImageDimension; j++ )
-    {
-    os << m_ChangeRegionFactors[j] << " ";
-    }
-  os << std::endl;
+  os << indent << "Origin: " << m_Origin << std::endl;
+  os << indent << "BufferedRegion: " << m_BufferedRegion << std::endl;
+  os << indent << "LargestPossibleRegion: " << m_LargestPossibleRegion << std::endl;
 }
 
-template< class ImageType >
-void
-ChangeRegionImageFilter< ImageType >
-::SetBufferedRegion(typename ImageType::RegionType region)
-{
-    m_BufferedRegion = region;
-    this->Modified();
-}
-
-template< class ImageType >
-void
-ChangeRegionImageFilter< ImageType >
-::SetLargestPossibleRegion(typename ImageType::RegionType region)
-{
-    m_LargestPossibleRegion = region;
-    this->Modified();
-}
-
-template< class ImageType >
-void
-ChangeRegionImageFilter< ImageType >
-::SetOrigin(typename ImageType::PointType origin)
-{
-    m_Origin = origin;
-    this->Modified();
-}
-
-
-template< class ImageType >
-void
-ChangeRegionImageFilter< ImageType >
-::GenerateData()
-{
-  this->AllocateOutputs();
-
-  // Get the inputPtr and outputPtr pointers
-  InputImageConstPointer inputPtr = this->GetInput();
-  OutputImagePointer     outputPtr = this->GetOutput();
-
-  // Get regions.
-  typename ImageType::RegionType ibregion = inputPtr->GetBufferedRegion();
-  typename ImageType::RegionType obregion = outputPtr->GetBufferedRegion();
-
-  // Size of buffered regions, for both inputPtr and outputs.
-  int NZ,NY,NX,NC;
-  typename ImageType::SizeType size = ibregion.GetSize();
-  NZ = size[2];
-  NY = size[1];
-  NX = size[0];
-  NC = inputPtr->GetNumberOfComponentsPerPixel();
-  // TODO: ChangeRegionImageFilter::GenerateData: check inputPtr and outputPtr has same bufferedRegion size
-
-  // Index of buffered region for inputPtr.
-  typename ImageType::IndexType ibindex = ibregion.GetIndex();
-  typename ImageType::IndexType ipixel;
-  int IZ,IY,IX;
-  IZ = ibindex[2];
-  IY = ibindex[1];
-  IX = ibindex[0];
-
-  // Index of buffered region, for outputPtr.
-  typename ImageType::IndexType obindex = obregion.GetIndex();
-  typename ImageType::IndexType kpixel;
-  int KZ,KY,KX;
-  KZ = obindex[2];
-  KY = obindex[1];
-  KX = obindex[0];
-
-  // Pixel.
-  typedef itk::VariableLengthVector<double> VariableVectorType;
-  VariableVectorType pixel;
-  pixel.SetSize(NC);
-
-  // Set image pixel //
-  for (int iz=0; iz < NZ; ++iz) {
-      ipixel[2] = IZ+iz;
-      kpixel[2] = KZ+iz;
-      for (int iy=0; iy < NY; ++iy) {
-          ipixel[1] = IY+iy;
-          kpixel[1] = KY+iy;
-          for (int ix=0; ix < NX; ++ix) {
-              ipixel[0] = IX+ix;
-              kpixel[0] = KX+ix;
-              pixel = inputPtr->GetPixel(ipixel);
-              outputPtr->SetPixel(kpixel, pixel);
-          }
-      }
-  }
-
-}
-
-template< class ImageType >
-void
-ChangeRegionImageFilter< ImageType >
-::GenerateInputRequestedRegion()
-{
-  // Call the superclass' implementation of this method
-  Superclass::GenerateInputRequestedRegion();
-
-  // Get pointers to the inputPtr and outputPtr
-  InputImagePointer  inputPtr = const_cast< ImageType * >( this->GetInput() );
-  OutputImagePointer outputPtr = this->GetOutput();
-
-  inputPtr->SetRequestedRegion(inputPtr->GetBufferedRegion());
-}
-
-template< class ImageType >
-void
-ChangeRegionImageFilter< ImageType >
-::GenerateOutputInformation()
-{
-  // Call the superclass' implementation of this method
-  Superclass::GenerateOutputInformation();
-
-  // Get pointers to the inputPtr and outputPtr
-  InputImageConstPointer inputPtr  = this->GetInput();
-  OutputImagePointer     outputPtr = this->GetOutput();
-
-  outputPtr->SetBufferedRegion(m_BufferedRegion);
-  outputPtr->SetRequestedRegion(m_BufferedRegion);
-  outputPtr->SetLargestPossibleRegion(m_LargestPossibleRegion);
-  outputPtr->SetOrigin(m_Origin);
-}
 } // end namespace itk
 
 #endif
