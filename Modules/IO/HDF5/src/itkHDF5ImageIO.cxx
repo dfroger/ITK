@@ -1284,9 +1284,11 @@ HDF5ImageIO
     // in this case, set the chunk size to be the N-1 dimension
     // region
     H5::DSetCreatPropList plist;
-    plist.setDeflate(5);
-    dims[0] = 1;
-    plist.setChunk(numDims,dims);
+    if (this->m_UseCompression) {
+        plist.setDeflate(5);
+        dims[0] = 1;
+        plist.setChunk(numDims,dims);
+    }
 
     //
     // Create DataSet Once, potentially write to it many times
